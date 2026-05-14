@@ -30,27 +30,25 @@ jobs:
             Write-Host "`r🚀 Đang khởi tạo hệ thống... $($frames[$i % 8])" -NoNewline -ForegroundColor Blue
             Start-Sleep -Milliseconds 100
           }
-          Write-Host "`r✅ Hệ thống đã sẵn sàng!                    " -ForegroundColor Green
+          Write-Host "`r✅ Hệ thống đã sẵn sàng!" -ForegroundColor Green
 
       # CẤU HÌNH RDP
       - name: 🔧 CẤU HÌNH HỆ THỐNG
         run: |
-          Write-Host ""
-          Write-Host "🛠️  ĐANG CẤU HÌNH HỆ THỐNG" -ForegroundColor Yellow
+          Write-Host "🛠️  Đang cấu hình RDP..." -ForegroundColor Yellow
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
-          netsh advfirewall firewall add rule name="RDP-Premium" dir=in action=allow protocol=TCP localport=3389 profile=any
-          netsh advfirewall firewall add rule name="RDP-Premium-Out" dir=out action=allow protocol=TCP localport=3389 profile=any
+          netsh advfirewall firewall add rule name="RDP-Premium" dir=in action=allow protocol=TCP localport=3389
+          netsh advfirewall firewall add rule name="RDP-Premium-Out" dir=out action=allow protocol=TCP localport=3389
           Set-Service -Name TermService -StartupType Automatic -ErrorAction SilentlyContinue
           Start-Service -Name TermService -ErrorAction SilentlyContinue
           Write-Host "✅ Cấu hình RDP hoàn tất" -ForegroundColor Green
 
-      # TẠO USER (ĐÃ SỬA LỖI $true)
-      - name: 👤 TẠO TÀI KHOẢN PREMIUM       
-        run: |
-          Write-Host ""
-          Write-Host "👤 ĐANG TẠO TÀI KHOẢN PREMIUM" -ForegroundColor Yellow
+      # TẠO USER
+      - name: 👤 TẠO TÀI KHOẢN PREMIUM
+        run: |          
+          Write-Host "👤 Đang tạo tài khoản..." -ForegroundColor Yellow
           function New-PremiumPassword {
             $upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
             $lower = 'abcdefghijkmnpqrstuvwxyz'
@@ -63,64 +61,45 @@ jobs:
           $matKhau = if ($env:CUSTOM_RDP_PASS) { $env:CUSTOM_RDP_PASS } else { New-PremiumPassword }
           $securePass = ConvertTo-SecureString $matKhau -AsPlainText -Force
           Remove-LocalUser -Name "AISTV-PREMIUM" -ErrorAction SilentlyContinue
-          
-          # ✅ SỬA LỖI: Bỏ $true, dùng đúng cú pháp Switch Parameter
           New-LocalUser -Name "AISTV-PREMIUM" -Password $securePass -AccountNeverExpires -PasswordNeverExpires -Description "AI STV Premium Account"
           Set-LocalUser -Name "AISTV-PREMIUM" -PasswordNeverExpires $true -ErrorAction SilentlyContinue
-          
-          Add-LocalGroupMember -Group "Administrators" -Member "AISTV-PREMIUM" -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "AISTV-PREMIUM" -ErrorAction SilentlyContinue
+          Add-LocalGroupMember -Group "Administrators","Remote Desktop Users" -Member "AISTV-PREMIUM" -ErrorAction SilentlyContinue
           Enable-LocalUser -Name "AISTV-PREMIUM"
-          
           echo "RDP_USER=AISTV-PREMIUM" >> $env:GITHUB_ENV
           echo "RDP_PASS=$matKhau" >> $env:GITHUB_ENV
           echo "$matKhau" > $env:TEMP\rdp_password.txt
           Write-Host "✅ User: AISTV-PREMIUM | Pass: $matKhau" -ForegroundColor Green
 
-      # CLOUDFLARE TUNNEL (ĐÃ SỬA LỖI REDIRECT)
+      # CLOUDFLARE TUNNEL
       - name: 🌐 THIẾT LẬP CLOUDFLARE TUNNEL
         run: |
-          Write-Host ""
-          Write-Host "🌐 ĐANG THIẾT LẬP CLOUDFLARE TUNNEL..." -ForegroundColor Yellow
+          Write-Host "🌐 Đang thiết lập Cloudflare Tunnel..." -ForegroundColor Yellow
           $cfPath = "$env:TEMP\cloudflared.exe"
           $outLog = "$env:TEMP\cf_out.log"
           $errLog = "$env:TEMP\cf_err.log"
-          
-          # Tải cloudflared
           Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile $cfPath
-          
-          # ✅ SỬA LỖI: Dùng 2 file log riêng biệt cho stdout/stderr
-          $proc = Start-Process -FilePath $cfPath -ArgumentList "tunnel", "--url", "tcp://localhost:3389" -PassThru -NoNewWindow -RedirectStandardOutput $outLog -RedirectStandardError $errLog
+          Start-Process -FilePath $cfPath -ArgumentList "tunnel", "--url", "tcp://localhost:3389" -PassThru -NoNewWindow -RedirectStandardOutput $outLog -RedirectStandardError $errLog
           Start-Sleep -Seconds 12
-          
-          # Parse URL từ log (thử cả 2 file)
           $hostUrl = $null
           $port = "3389"
           foreach ($logFile in @($outLog, $errLog)) {
-            if (Test-Path $logFile) {              $content = Get-Content $logFile -Raw
-              # Tìm pattern: xxx.trycloudflare.com:PORT
+            if (Test-Path $logFile) {
+              $content = Get-Content $logFile -Raw
               if ($content -match '([a-z0-9\-]+\.trycloudflare\.com):(\d+)') {
                 $hostUrl = $matches[1]
                 $port = $matches[2]
                 break
-              }
-              # Fallback: tìm hostname không có port
-              elseif ($content -match '([a-z0-9\-]+\.trycloudflare\.com)') {
+              } elseif ($content -match '([a-z0-9\-]+\.trycloudflare\.com)') {
                 $hostUrl = $matches[1]
                 break
               }
             }
           }
-          
-          # Fallback nếu không parse được
-          if (-not $hostUrl) {
-            $hostUrl = "ai-stv-$((Get-Random -Maximum 99999)).trycloudflare.com"
-          }
-          
+          if (-not $hostUrl) { $hostUrl = "ai-stv-$((Get-Random -Maximum 99999)).trycloudflare.com" }
           echo "RDP_HOST=$hostUrl" >> $env:GITHUB_ENV
-          echo "RDP_PORT=$port" >> $env:GITHUB_ENV
-          Write-Host "✅ Tunnel hoạt động: $hostUrl`:$port" -ForegroundColor Green
-      # HIỂN THỊ THÔNG TIN KẾT NỐI
+          echo "RDP_PORT=$port" >> $env:GITHUB_ENV          Write-Host "✅ Tunnel: ${hostUrl}:${port}" -ForegroundColor Green
+
+      # HIỂN THỊ THÔNG TIN KẾT NỐI (ĐÃ SỬA LỖI Write-Host)
       - name: 🎉 THÔNG TIN KẾT NỐI
         run: |
           $matKhau = Get-Content $env:TEMP\rdp_password.txt -ErrorAction SilentlyContinue
@@ -135,22 +114,24 @@ jobs:
           $thoiGianBatDau = [System.TimeZoneInfo]::ConvertTimeFromUtc((Get-Date).ToUniversalTime(), $timeZone)
           $thoiGianKetThuc = $thoiGianBatDau.AddMinutes($totalMinutes)
           
-          Write-Host ""
+          # Dùng Write-Output để tránh lỗi parameter, chỉ dùng Write-Host cho tiêu đề
+          Write-Host "" -ForegroundColor Cyan
           Write-Host "┌───────────────────────────────────────────┐" -ForegroundColor Cyan
-          Write-Host "│              🎉 KẾT NỐI THÀNH CÔNG!              │" -ForegroundColor Cyan
+          Write-Host "│        🎉 KẾT NỐI THÀNH CÔNG!        │" -ForegroundColor Cyan
           Write-Host "├───────────────────────────────────────────┤" -ForegroundColor Cyan
-          Write-Host "│ 🌐  Server: $env:RDP_HOST" -ForegroundColor White
-          Write-Host "│ 🔌  Port: $env:RDP_PORT" -ForegroundColor White
-          Write-Host "│ 👤  User: AISTV-PREMIUM" -ForegroundColor White
-          Write-Host "│ 🔐  Pass: $matKhau" -ForegroundColor White
-          Write-Host "│ ⏰  Thời lượng: $displayTime" -ForegroundColor White
-          Write-Host "│ 🕐  Kết thúc: $($thoiGianKetThuc.ToString('HH:mm:ss'))" -ForegroundColor White
-          Write-Host "├───────────────────────────────────────────┤" -ForegroundColor Cyan          Write-Host "│ 💡  Cách kết nối (Windows):               │" -ForegroundColor Cyan
-          Write-Host "│   1. Nhấn Win+R → gõ: mstsc              │" -ForegroundColor Yellow
-          Write-Host "│   2. Nhập: $env:RDP_HOST:$env:RDP_PORT    │" -ForegroundColor Yellow
-          Write-Host "│   3. User: AISTV-PREMIUM                 │" -ForegroundColor Yellow
-          Write-Host "│   4. Pass: (xem trên)                    │" -ForegroundColor Yellow
-          Write-Host "│   5. Bỏ qua cảnh báo Certificate ✓       │" -ForegroundColor Yellow
+          Write-Output "│ 🌐  Server: ${env:RDP_HOST}"
+          Write-Output "│ 🔌  Port: ${env:RDP_PORT}"
+          Write-Output "│ 👤  User: AISTV-PREMIUM"
+          Write-Output "│ 🔐  Pass: $matKhau"
+          Write-Output "│ ⏰  Thời lượng: $displayTime"
+          Write-Output "│ 🕐  Kết thúc: $($thoiGianKetThuc.ToString('HH:mm:ss'))"
+          Write-Host "├───────────────────────────────────────────┤" -ForegroundColor Cyan
+          Write-Host "│ 💡 Cách kết nối (Windows):          │" -ForegroundColor Cyan
+          Write-Output "│   1. Win+R → mstsc"
+          Write-Output "│   2. Nhập: ${env:RDP_HOST}:${env:RDP_PORT}"
+          Write-Output "│   3. User: AISTV-PREMIUM"
+          Write-Output "│   4. Pass: (xem trên)"
+          Write-Output "│   5. Bỏ qua cảnh báo Certificate ✓"
           Write-Host "└───────────────────────────────────────────┘" -ForegroundColor Cyan
           echo "TOTAL_MINUTES=$totalMinutes" >> $env:GITHUB_ENV
 
@@ -165,8 +146,7 @@ jobs:
           $startTime = Get-Date
           do {
             $now = [System.TimeZoneInfo]::ConvertTimeFromUtc((Get-Date).ToUniversalTime(), $timeZone)
-            $remaining = $endTime - $now
-            if ($remaining.TotalSeconds -le 0) { break }
+            $remaining = $endTime - $now            if ($remaining.TotalSeconds -le 0) { break }
             $h = [math]::Floor($remaining.TotalHours)
             $m = [math]::Floor($remaining.TotalMinutes % 60)
             $s = [math]::Floor($remaining.TotalSeconds % 60)
@@ -176,22 +156,15 @@ jobs:
             if ($svc.Status -ne 'Running') { Start-Service TermService -ErrorAction SilentlyContinue }
             Start-Sleep -Seconds 5
           } while ($true)
-          Write-Host "`n🎯 Hết thời gian - Dừng phiên" -ForegroundColor Red
+          Write-Host "`n🎯 Hết thời gian" -ForegroundColor Red
 
       # DỌN DẸP
       - name: 🧹 DỌN DẸP HỆ THỐNG
         if: always()
         run: |
           Write-Host "🧹 Đang dọn dẹp..." -ForegroundColor Yellow
-          # Dừng cloudflared
           Stop-Process -Name cloudflared -Force -ErrorAction SilentlyContinue
-          # Vô hiệu hóa user
           Disable-LocalUser -Name "AISTV-PREMIUM" -ErrorAction SilentlyContinue
-          # Xóa file nhạy cảm
-          Remove-Item "$env:TEMP\rdp_password.txt" -ErrorAction SilentlyContinue
-          Remove-Item "$env:TEMP\cloudflared.exe" -ErrorAction SilentlyContinue
-          Remove-Item "$env:TEMP\cf_out.log" -ErrorAction SilentlyContinue
-          Remove-Item "$env:TEMP\cf_err.log" -ErrorAction SilentlyContinue
-          # Tắt RDP
+          Remove-Item "$env:TEMP\rdp_password.txt","$env:TEMP\cloudflared.exe","$env:TEMP\cf_out.log","$env:TEMP\cf_err.log" -ErrorAction SilentlyContinue
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 1 -Force -ErrorAction SilentlyContinue
           Write-Host "✅ Dọn dẹp hoàn tất" -ForegroundColor Green

@@ -119,8 +119,7 @@ jobs:
           
           echo "RDP_HOST=$hostUrl" >> $env:GITHUB_ENV
           echo "RDP_PORT=$port" >> $env:GITHUB_ENV
-          Write-Host "✅ Tunnel hoạt động: $hostUrl:$port" -ForegroundColor Green
-
+          Write-Host "✅ Tunnel hoạt động: $hostUrl`:$port" -ForegroundColor Green
       # HIỂN THỊ THÔNG TIN KẾT NỐI
       - name: 🎉 THÔNG TIN KẾT NỐI
         run: |

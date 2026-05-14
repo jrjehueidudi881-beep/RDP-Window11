@@ -47,7 +47,8 @@ jobs:
           Write-Host "✅ Cấu hình RDP hoàn tất" -ForegroundColor Green
 
       # TẠO USER (ĐÃ SỬA LỖI $true)
-      - name: 👤 TẠO TÀI KHOẢN PREMIUM        run: |
+      - name: 👤 TẠO TÀI KHOẢN PREMIUM       
+        run: |
           Write-Host ""
           Write-Host "👤 ĐANG TẠO TÀI KHOẢN PREMIUM" -ForegroundColor Yellow
           function New-PremiumPassword {

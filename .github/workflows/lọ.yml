@@ -11,7 +11,6 @@ on:
           - '1h'
           - '3h'
           - '5h40m'
-
 jobs:
   Premium-RDP-Setup:
     runs-on: windows-latest
@@ -47,9 +46,8 @@ jobs:
 
       # TẠO USER
       - name: 👤 TẠO TÀI KHOẢN PREMIUM
-        run: |          
-          Write-Host "👤 Đang tạo tài khoản..." -ForegroundColor Yellow
-          function New-PremiumPassword {
+        run: |
+          Write-Host "👤 Đang tạo tài khoản..." -ForegroundColor Yellow          function New-PremiumPassword {
             $upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
             $lower = 'abcdefghijkmnpqrstuvwxyz'
             $numbers = '23456789'
@@ -114,7 +112,6 @@ jobs:
           $timeZone = [System.TimeZoneInfo]::FindSystemTimeZoneById("SE Asia Standard Time")
           $thoiGianBatDau = [System.TimeZoneInfo]::ConvertTimeFromUtc((Get-Date).ToUniversalTime(), $timeZone)
           $thoiGianKetThuc = $thoiGianBatDau.AddMinutes($totalMinutes)
-          
           # Dùng Write-Output để tránh lỗi parameter, chỉ dùng Write-Host cho tiêu đề
           Write-Host "" -ForegroundColor Cyan
           Write-Host "┌───────────────────────────────────────────┐" -ForegroundColor Cyan
@@ -147,8 +144,8 @@ jobs:
           $startTime = Get-Date
           do {
             $now = [System.TimeZoneInfo]::ConvertTimeFromUtc((Get-Date).ToUniversalTime(), $timeZone)
-            $remaining = $endTime - $now            if ($remaining.TotalSeconds -le 0) { break }
-            $h = [math]::Floor($remaining.TotalHours)
+            $remaining = $endTime - $now
+            if ($remaining.TotalSeconds -le 0) { break }            $h = [math]::Floor($remaining.TotalHours)
             $m = [math]::Floor($remaining.TotalMinutes % 60)
             $s = [math]::Floor($remaining.TotalSeconds % 60)
             $f = $frames[([int]((Get-Date)-$startTime).TotalSeconds) % $frames.Length]

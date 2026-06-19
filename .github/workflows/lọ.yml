@@ -60,14 +60,35 @@ jobs:
             exit 1
           }
 
+          Write-Host "⏳ Đợi dịch vụ AnyDesk khởi động..." -ForegroundColor Yellow
+          Start-Service -Name "AnyDesk" -ErrorAction SilentlyContinue
+          Start-Sleep -Seconds 5
+
           $matKhau = if ($env:CUSTOM_RDP_PASS) { $env:CUSTOM_RDP_PASS } else { New-PremiumPassword }
           Write-Host "🔐 Đang đặt mật khẩu truy cập không giám sát..." -ForegroundColor Yellow
-          cmd /c "echo $matKhau | `"$adExe`" --set-password"
-          Start-Sleep -Seconds 3
+          $pwRetries = 0
+          do {
+            cmd /c "echo $matKhau | `"$adExe`" --set-password" | Out-Null
+            Start-Sleep -Seconds 3
+            $check = & $adExe --get-id 2>$null
+            $pwRetries++
+          } while ([string]::IsNullOrWhiteSpace($check) -and $pwRetries -lt 10)
 
           Write-Host "🆔 Đang lấy AnyDesk ID..." -ForegroundColor Yellow
-          $adId = & $adExe --get-id
-          $adId = $adId.Trim()
+          $adId = $null
+          $idRetries = 0
+          while ([string]::IsNullOrWhiteSpace($adId) -and $idRetries -lt 15) {
+            $raw = & $adExe --get-id 2>$null
+            $adId = ($raw -join "").Trim()
+            if ([string]::IsNullOrWhiteSpace($adId)) { Start-Sleep -Seconds 2 }
+            $idRetries++
+          }
+
+          if ([string]::IsNullOrWhiteSpace($adId)) {
+            Write-Host "❌ Không lấy được AnyDesk ID sau nhiều lần thử, kiểm tra log Get-Service AnyDesk" -ForegroundColor Red
+            Get-Service -Name "AnyDesk*" -ErrorAction SilentlyContinue | Format-List
+            exit 1
+          }
 
           echo "ANYDESK_EXE=$adExe" >> $env:GITHUB_ENV
           echo "ANYDESK_ID=$adId" >> $env:GITHUB_ENV

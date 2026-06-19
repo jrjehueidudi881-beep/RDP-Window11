@@ -12,7 +12,7 @@ on:
           - '3h'
           - '5h40m'
 jobs:
-  Premium-AnyDesk-Setup:
+  Premium-RustDesk-Setup:
     runs-on: windows-latest
     timeout-minutes: 340
     steps:
@@ -20,7 +20,7 @@ jobs:
       - name: 🎯 KHỞI ĐỘNG HỆ THỐNG
         run: |
           Write-Host ""
-          Write-Host "🤖 AI STV PREMIUM ANYDESK SERVER" -ForegroundColor Yellow
+          Write-Host "🤖 AI STV PREMIUM RUSTDESK SERVER" -ForegroundColor Yellow
           Write-Host "⚡ Powered by AI STV" -ForegroundColor Green
           Write-Host "🕒 Thời gian: ${{ github.event.inputs.duration }}" -ForegroundColor Magenta
           Write-Host ""
@@ -31,8 +31,8 @@ jobs:
           }
           Write-Host "`r✅ Hệ thống đã sẵn sàng!" -ForegroundColor Green
 
-      # CÀI ĐẶT ANYDESK
-      - name: 📥 CÀI ĐẶT ANYDESK
+      # CÀI ĐẶT RUSTDESK
+      - name: 📥 CÀI ĐẶT RUSTDESK
         run: |
           function New-PremiumPassword {
             $upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
@@ -44,56 +44,63 @@ jobs:
             return -join ($pw.ToCharArray() | Sort-Object { Get-Random })
           }
 
-          Write-Host "📥 Đang tải AnyDesk..." -ForegroundColor Yellow
-          $adSetup = "$env:TEMP\AnyDesk.exe"
-          Invoke-WebRequest -Uri "https://download.anydesk.com/AnyDesk.exe" -OutFile $adSetup -UseBasicParsing
+          $installDir = "$env:ProgramFiles\RustDesk"
+          $rdExe = "$installDir\rustdesk.exe"
 
-          $adDir = "C:\AnyDesk"
-          $adExe = "$adDir\AnyDesk.exe"
+          Write-Host "📥 Đang tải RustDesk..." -ForegroundColor Yellow
+          Invoke-WebRequest -Uri "https://github.com/rustdesk/rustdesk/releases/download/1.2.6/rustdesk-1.2.6-x86_64.exe" -OutFile "$env:TEMP\rustdesk.exe" -UseBasicParsing
 
-          Write-Host "⚙️  Đang cài đặt AnyDesk (silent)..." -ForegroundColor Yellow
-          Start-Process -FilePath $adSetup -ArgumentList "--install `"$adDir`" --start-with-win --silent --create-shortcuts" -Wait
-          Start-Sleep -Seconds 5
+          Write-Host "⚙️  Đang cài đặt RustDesk (silent)..." -ForegroundColor Yellow
+          Start-Process "$env:TEMP\rustdesk.exe" -ArgumentList "--silent-install" -Wait
+          Start-Sleep -Seconds 15
 
-          if (-not (Test-Path $adExe)) {
-            Write-Host "❌ Cài đặt thất bại, không thấy AnyDesk.exe tại $adExe" -ForegroundColor Red
+          if (-not (Test-Path $rdExe)) {
+            Write-Host "❌ Không thấy rustdesk.exe sau khi cài tại $rdExe" -ForegroundColor Red
             exit 1
           }
 
-          Write-Host "⏳ Đợi dịch vụ AnyDesk khởi động..." -ForegroundColor Yellow
-          Start-Service -Name "AnyDesk" -ErrorAction SilentlyContinue
-          Start-Sleep -Seconds 5
+          Write-Host "🔧 Đang cài service..." -ForegroundColor Yellow
+          Set-Location $installDir
+          $svc = Get-Service -Name "Rustdesk" -ErrorAction SilentlyContinue
+          if (-not $svc) {
+            Start-Process ".\rustdesk.exe" -ArgumentList "--install-service" -Wait
+            Start-Sleep -Seconds 15
+            $svc = Get-Service -Name "Rustdesk" -ErrorAction SilentlyContinue
+          }
 
-          $matKhau = if ($env:CUSTOM_RDP_PASS) { $env:CUSTOM_RDP_PASS } else { New-PremiumPassword }
-          Write-Host "🔐 Đang đặt mật khẩu truy cập không giám sát..." -ForegroundColor Yellow
-          $pwRetries = 0
-          do {
-            cmd /c "echo $matKhau | `"$adExe`" --set-password" | Out-Null
-            Start-Sleep -Seconds 3
-            $check = & $adExe --get-id 2>$null
-            $pwRetries++
-          } while ([string]::IsNullOrWhiteSpace($check) -and $pwRetries -lt 10)
+          $waitCount = 0
+          while ($svc -and $svc.Status -ne 'Running' -and $waitCount -lt 12) {
+            Start-Service "Rustdesk" -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 5
+            $svc.Refresh()
+            $waitCount++
+          }
+          Write-Host "🔧 Service status: $($svc.Status)" -ForegroundColor Yellow
 
-          Write-Host "🆔 Đang lấy AnyDesk ID..." -ForegroundColor Yellow
-          $adId = $null
+          Write-Host "🆔 Đang lấy RustDesk ID..." -ForegroundColor Yellow
+          $rdId = $null
           $idRetries = 0
-          while ([string]::IsNullOrWhiteSpace($adId) -and $idRetries -lt 15) {
-            $raw = & $adExe --get-id 2>$null
-            $adId = ($raw -join "").Trim()
-            if ([string]::IsNullOrWhiteSpace($adId)) { Start-Sleep -Seconds 2 }
+          while ([string]::IsNullOrWhiteSpace($rdId) -and $idRetries -lt 15) {
+            $rdId = (& ".\rustdesk.exe" --get-id 2>$null | Out-String).Trim()
+            if ([string]::IsNullOrWhiteSpace($rdId)) { Start-Sleep -Seconds 3 }
             $idRetries++
           }
 
-          if ([string]::IsNullOrWhiteSpace($adId)) {
-            Write-Host "❌ Không lấy được AnyDesk ID sau nhiều lần thử, kiểm tra log Get-Service AnyDesk" -ForegroundColor Red
-            Get-Service -Name "AnyDesk*" -ErrorAction SilentlyContinue | Format-List
+          if ([string]::IsNullOrWhiteSpace($rdId)) {
+            Write-Host "❌ Không lấy được ID sau nhiều lần thử" -ForegroundColor Red
+            Get-Service -Name "Rustdesk*" -ErrorAction SilentlyContinue | Format-List
             exit 1
           }
 
-          echo "ANYDESK_EXE=$adExe" >> $env:GITHUB_ENV
-          echo "ANYDESK_ID=$adId" >> $env:GITHUB_ENV
-          echo "ANYDESK_PASS=$matKhau" >> $env:GITHUB_ENV
-          Write-Host "✅ AnyDesk đã sẵn sàng | ID: $adId" -ForegroundColor Green
+          $matKhau = if ($env:CUSTOM_RDP_PASS) { $env:CUSTOM_RDP_PASS } else { New-PremiumPassword }
+          Write-Host "🔐 Đang đặt mật khẩu cố định..." -ForegroundColor Yellow
+          Start-Process ".\rustdesk.exe" -ArgumentList "--password $matKhau" -Wait
+          Start-Sleep -Seconds 2
+
+          echo "RUSTDESK_EXE=$rdExe" >> $env:GITHUB_ENV
+          echo "RUSTDESK_ID=$rdId" >> $env:GITHUB_ENV
+          echo "RUSTDESK_PASS=$matKhau" >> $env:GITHUB_ENV
+          Write-Host "✅ RustDesk đã sẵn sàng | ID: $rdId" -ForegroundColor Green
 
       # HIỂN THỊ THÔNG TIN KẾT NỐI
       - name: 🎉 THÔNG TIN KẾT NỐI
@@ -108,16 +115,16 @@ jobs:
           $thoiGianKetThuc = [System.TimeZoneInfo]::ConvertTimeFromUtc((Get-Date).ToUniversalTime(), $timeZone).AddMinutes($totalMinutes)
           Write-Host ""
           Write-Host "┌───────────────────────────────────────────┐" -ForegroundColor Cyan
-          Write-Host "│        🎉 ANYDESK SẴN SÀNG!          │" -ForegroundColor Cyan
+          Write-Host "│        🎉 RUSTDESK SẴN SÀNG!         │" -ForegroundColor Cyan
           Write-Host "├───────────────────────────────────────────┤" -ForegroundColor Cyan
-          Write-Output "│ 🆔  AnyDesk ID: $env:ANYDESK_ID"
-          Write-Output "│ 🔐  Mật khẩu: $env:ANYDESK_PASS"
+          Write-Output "│ 🆔  RustDesk ID: $env:RUSTDESK_ID"
+          Write-Output "│ 🔐  Mật khẩu: $env:RUSTDESK_PASS"
           Write-Output "│ ⏰  Thời lượng: $displayTime"
           Write-Output "│ 🕐  Kết thúc: $($thoiGianKetThuc.ToString('HH:mm:ss'))"
           Write-Host "├───────────────────────────────────────────┤" -ForegroundColor Cyan
           Write-Output "│ 💡 Cách kết nối:"
-          Write-Output "│   1. Mở app AnyDesk (PC/điện thoại)"
-          Write-Output "│   2. Nhập ID ở trên vào ô 'Remote Desktop'"
+          Write-Output "│   1. Mở app RustDesk (PC/điện thoại)"
+          Write-Output "│   2. Nhập ID ở trên vào ô 'ID đối tác'"
           Write-Output "│   3. Bấm Connect, nhập mật khẩu khi được hỏi"
           Write-Host "└───────────────────────────────────────────┘" -ForegroundColor Cyan
           echo "TOTAL_MINUTES=$totalMinutes" >> $env:GITHUB_ENV
@@ -140,8 +147,8 @@ jobs:
             $s = [math]::Floor($remaining.TotalSeconds % 60)
             $f = $frames[([int]((Get-Date)-$startTime).TotalSeconds) % $frames.Length]
             Write-Host "`r$f ⏳ Còn lại: $h giờ $m phút $s giây" -NoNewline -ForegroundColor Cyan
-            $proc = Get-Process -Name "AnyDesk" -ErrorAction SilentlyContinue
-            if (-not $proc -and $env:ANYDESK_EXE) { Start-Process -FilePath $env:ANYDESK_EXE -ErrorAction SilentlyContinue }
+            $svc = Get-Service -Name "Rustdesk" -ErrorAction SilentlyContinue
+            if ($svc -and $svc.Status -ne 'Running') { Start-Service "Rustdesk" -ErrorAction SilentlyContinue }
             Start-Sleep -Seconds 5
           } while ($true)
           Write-Host "`n🎯 Hết thời gian" -ForegroundColor Red
@@ -151,7 +158,7 @@ jobs:
         if: always()
         run: |
           Write-Host "🧹 Đang dọn dẹp..." -ForegroundColor Yellow
-          Stop-Process -Name "AnyDesk" -Force -ErrorAction SilentlyContinue
-          if ($env:ANYDESK_EXE) { Start-Process -FilePath $env:ANYDESK_EXE -ArgumentList "--remove" -Wait -ErrorAction SilentlyContinue }
-          Remove-Item "$env:TEMP\AnyDesk.exe" -ErrorAction SilentlyContinue
+          Stop-Service "Rustdesk" -Force -ErrorAction SilentlyContinue
+          Stop-Process -Name "rustdesk" -Force -ErrorAction SilentlyContinue
+          Remove-Item "$env:TEMP\rustdesk.exe" -ErrorAction SilentlyContinue
           Write-Host "✅ Dọn dẹp hoàn tất" -ForegroundColor Green

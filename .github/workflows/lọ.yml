@@ -47,7 +47,8 @@ jobs:
       # TẠO USER
       - name: 👤 TẠO TÀI KHOẢN PREMIUM
         run: |
-          Write-Host "👤 Đang tạo tài khoản..." -ForegroundColor Yellow          function New-PremiumPassword {
+          Write-Host "👤 Đang tạo tài khoản..." -ForegroundColor Yellow
+          function New-PremiumPassword {
             $upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ'
             $lower = 'abcdefghijkmnpqrstuvwxyz'
             $numbers = '23456789'
@@ -96,7 +97,8 @@ jobs:
           }
           if (-not $hostUrl) { $hostUrl = "ai-stv-$((Get-Random -Maximum 99999)).trycloudflare.com" }
           echo "RDP_HOST=$hostUrl" >> $env:GITHUB_ENV
-          echo "RDP_PORT=$port" >> $env:GITHUB_ENV          Write-Host "✅ Tunnel: ${hostUrl}:${port}" -ForegroundColor Green
+          echo "RDP_PORT=$port" >> $env:GITHUB_ENV
+          Write-Host "✅ Tunnel: ${hostUrl}:${port}" -ForegroundColor Green
 
       # HIỂN THỊ THÔNG TIN KẾT NỐI (ĐÃ SỬA LỖI Write-Host)
       - name: 🎉 THÔNG TIN KẾT NỐI
@@ -145,7 +147,8 @@ jobs:
           do {
             $now = [System.TimeZoneInfo]::ConvertTimeFromUtc((Get-Date).ToUniversalTime(), $timeZone)
             $remaining = $endTime - $now
-            if ($remaining.TotalSeconds -le 0) { break }            $h = [math]::Floor($remaining.TotalHours)
+            if ($remaining.TotalSeconds -le 0) { break }
+            $h = [math]::Floor($remaining.TotalHours)
             $m = [math]::Floor($remaining.TotalMinutes % 60)
             $s = [math]::Floor($remaining.TotalSeconds % 60)
             $f = $frames[([int]((Get-Date)-$startTime).TotalSeconds) % $frames.Length]

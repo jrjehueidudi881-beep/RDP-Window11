@@ -51,8 +51,8 @@ jobs:
           Invoke-WebRequest -Uri "https://github.com/rustdesk/rustdesk/releases/download/1.2.6/rustdesk-1.2.6-x86_64.exe" -OutFile "$env:TEMP\rustdesk.exe" -UseBasicParsing
 
           Write-Host "⚙️  Đang cài đặt RustDesk (silent)..." -ForegroundColor Yellow
-          Start-Process "$env:TEMP\rustdesk.exe" -ArgumentList "--silent-install" -Wait
-          Start-Sleep -Seconds 15
+          Start-Process "$env:TEMP\rustdesk.exe" -ArgumentList "--silent-install"
+          Start-Sleep -Seconds 30
 
           if (-not (Test-Path $rdExe)) {
             Write-Host "❌ Không thấy rustdesk.exe sau khi cài tại $rdExe" -ForegroundColor Red

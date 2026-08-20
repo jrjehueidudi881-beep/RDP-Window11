@@ -49,7 +49,7 @@ jobs:
           # ✅ SỬA 1: Dùng cmd /c để redirect stdout+stderr vào log file
           # ✅ SỬA 2: Thêm -oStrictHostKeyChecking=no để không bị hỏi host key
           # ✅ SỬA 3: Thêm -ServerAliveInterval để giữ kết nối
-          $sshArgs = "-R 3389:localhost:3389 serveo.net -oStrictHostKeyChecking=no -oServerAliveInterval=60 -oServerAliveCountMax=10"
+          $sshArgs = "-R 0:localhost:3389 serveo.net -oStrictHostKeyChecking=no -oServerAliveInterval=60 -oServerAliveCountMax=10"
           Start-Process -FilePath "cmd.exe" `
             -ArgumentList "/c ssh $sshArgs > `"$logPath`" 2>&1" `
             -WindowStyle Hidden

@@ -1,4 +1,4 @@
-name: 🚀 RDP FREE - SERVEO TUNNEL (Miễn Phí, Domain Cố Định)
+name: 🚀 RDP FREE - SERVEO TUNNEL
 on:
   workflow_dispatch:
     inputs:
@@ -17,11 +17,6 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 340
     steps:
-      - name: 🎯 KHỞI ĐỘNG
-        run: |
-          Write-Host "🤖 RDP FREE - SERVEO TUNNEL" -ForegroundColor Yellow
-          Write-Host "⚡ Domain Cố Định, Zero Cost" -ForegroundColor Green
-
       - name: 🔐 KHỞI ĐỘNG RDP SERVER
         run: |
           Set-ItemProperty -Path "HKLM:\System\CurrentControlSet\Control\Terminal Server" -Name "fDenyTSConnections" -Value 0 -Force
@@ -35,86 +30,121 @@ jobs:
 
       - name: 🌐 KHỞI ĐỘNG SERVEO TUNNEL
         run: |
-          Write-Host "🌐 Khởi động Serveo Tunnel (realtime log)..." -ForegroundColor Yellow
+          Write-Host "🌐 Ket noi Serveo..." -ForegroundColor Yellow
+
+          # Serveo yeu cau flag -N (no remote command) va -T (no pseudo-tty)
+          # Port 0 KHONG duoc ho tro cho TCP - phai dung port cu the
+          # Thu nhieu port khac nhau de tranh port bi chiem
+          $portList = @(13389, 23389, 33389, 43389, 53389, 33899, 44389, 55389, 10001, 20001)
 
           $sshDir = "$env:USERPROFILE\.ssh"
           if (-not (Test-Path $sshDir)) { New-Item -Path $sshDir -ItemType Directory -Force | Out-Null }
 
-          # Dung System.Diagnostics.Process de bat output realtime
-          $pinfo = New-Object System.Diagnostics.ProcessStartInfo
-          $pinfo.FileName = "ssh"
-          # Port 0 = Serveo tu cap port con trong (tranh loi "failed for listen port")
-          $pinfo.Arguments = "-R 0:localhost:3389 serveo.net -oStrictHostKeyChecking=no -oServerAliveInterval=60 -oServerAliveCountMax=10"
-          $pinfo.RedirectStandardOutput = $true
-          $pinfo.RedirectStandardError  = $true
-          $pinfo.UseShellExecute = $false
-          $pinfo.CreateNoWindow  = $true
+          $domain = ""
+          $successPort = 0
 
-          $proc = New-Object System.Diagnostics.Process
-          $proc.StartInfo = $pinfo
+          foreach ($port in $portList) {
+            Write-Host ""
+            Write-Host "🔄 Thu port serveo.net:$port ..." -ForegroundColor Cyan
 
-          # Dung ConcurrentBag de luu tat ca output an toan khi dung async
-          $bag = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+            # Kill SSH cu neu co
+            Stop-Process -Name "ssh" -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 1
 
-          $outAction = {
-            if ($EventArgs.Data) {
-              Write-Host "[SSH-OUT] $($EventArgs.Data)"
-              $Event.MessageData.Add($EventArgs.Data)
+            # Tao process voi output capture realtime
+            $pinfo = New-Object System.Diagnostics.ProcessStartInfo
+            $pinfo.FileName   = "ssh"
+            # -N  : khong chay remote command (bat buoc cho tunnel)
+            # -T  : tat pseudo-terminal (tranh warning)
+            # -R  : remote forward PORT:localhost:3389
+            $pinfo.Arguments  = "-NT -R ${port}:localhost:3389 serveo.net -oStrictHostKeyChecking=no -oServerAliveInterval=30 -oConnectTimeout=15"
+            $pinfo.RedirectStandardOutput = $true
+            $pinfo.RedirectStandardError  = $true
+            $pinfo.UseShellExecute = $false
+            $pinfo.CreateNoWindow  = $true
+
+            $proc = New-Object System.Diagnostics.Process
+            $proc.StartInfo = $pinfo
+
+            $bag = [System.Collections.Concurrent.ConcurrentBag[string]]::new()
+
+            $outEvt = Register-ObjectEvent -InputObject $proc -EventName OutputDataReceived -Action {
+              if ($EventArgs.Data) {
+                Write-Host "  [OUT] $($EventArgs.Data)"
+                $Event.MessageData.Add($EventArgs.Data)
+              }
+            } -MessageData $bag
+            $errEvt = Register-ObjectEvent -InputObject $proc -EventName ErrorDataReceived -Action {
+              if ($EventArgs.Data) {
+                Write-Host "  [ERR] $($EventArgs.Data)"
+                $Event.MessageData.Add($EventArgs.Data)
+              }
+            } -MessageData $bag
+
+            $proc.Start() | Out-Null
+            $proc.BeginOutputReadLine()
+            $proc.BeginErrorReadLine()
+
+            # Cho 10 giay xem ket qua
+            $elapsed = 0
+            $portFailed = $false
+            $portSuccess = $false
+
+            while ($elapsed -lt 10) {
+              Start-Sleep -Seconds 1
+              $elapsed++
+
+              foreach ($line in $bag) {
+                if ($line -match "remote port forwarding failed") { $portFailed = $true }
+                if ($line -match "Forwarding TCP connections from ([^\s]+)") {
+                  $domain = $Matches[1]
+                  $portSuccess = $true
+                }
+                if ($line -match "serveo\.net:(\d+)") {
+                  $domain = "serveo.net:$($Matches[1])"
+                  $portSuccess = $true
+                }
+              }
+
+              if ($portFailed -or $portSuccess) { break }
             }
-          }
-          $errAction = {
-            if ($EventArgs.Data) {
-              Write-Host "[SSH-ERR] $($EventArgs.Data)"
-              $Event.MessageData.Add($EventArgs.Data)
-            }
-          }
 
-          Register-ObjectEvent -InputObject $proc -EventName OutputDataReceived -Action $outAction -MessageData $bag | Out-Null
-          Register-ObjectEvent -InputObject $proc -EventName ErrorDataReceived  -Action $errAction -MessageData $bag | Out-Null
+            # Huy event
+            Unregister-Event -SourceIdentifier $outEvt.Name -ErrorAction SilentlyContinue
+            Unregister-Event -SourceIdentifier $errEvt.Name -ErrorAction SilentlyContinue
 
-          $proc.Start() | Out-Null
-          $proc.BeginOutputReadLine()
-          $proc.BeginErrorReadLine()
-
-          Write-Host "⏳ Cho Serveo cap port (toi da 40 giay)..." -ForegroundColor Yellow
-
-          $domain  = ""
-          $elapsed = 0
-          $timeout = 40
-
-          while ($elapsed -lt $timeout) {
-            Start-Sleep -Seconds 2
-            $elapsed += 2
-
-            foreach ($line in $bag) {
-              if ($line -match "Forwarding TCP connections from ([^\s]+)") {
-                $domain = $Matches[1]
+            if ($portSuccess) {
+              Write-Host "  ✅ THANH CONG! serveo.net:$port" -ForegroundColor Green
+              $successPort = $port
+              break
+            } elseif ($portFailed) {
+              Write-Host "  ❌ Port $port bi chiem, thu port tiep theo..." -ForegroundColor Yellow
+              Stop-Process -Name "ssh" -Force -ErrorAction SilentlyContinue
+            } else {
+              # Khong biet - co the dang chay nhung chua in domain
+              # Dung thuyet phuc: neu ket noi thanh cong thi SSH van chay
+              if (!$proc.HasExited) {
+                Write-Host "  ⚠️ Khong thay phan hoi ro rang, co the tunnel dang hoat dong." -ForegroundColor Yellow
+                Write-Host "  Gia su serveo.net:$port" -ForegroundColor Yellow
+                $domain = "serveo.net:$port"
+                $successPort = $port
                 break
               }
-              # Serveo doi khi in port theo dang khac
-              if ($line -match "serveo\.net:(\d+)") {
-                $domain = "serveo.net:$($Matches[1])"
-                break
-              }
+              Write-Host "  ❌ SSH thoat som, thu port tiep theo..." -ForegroundColor Yellow
             }
-
-            if ($domain -ne "") { break }
           }
-
-          Write-Host ""
-          Write-Host "========== TOAN BO SSH OUTPUT =========" -ForegroundColor DarkCyan
-          $i = 1
-          foreach ($line in $bag) {
-            Write-Host "  [$i] $line"
-            $i++
-          }
-          Write-Host "======================================" -ForegroundColor DarkCyan
 
           if ($domain -ne "") {
+            Write-Host ""
+            Write-Host "====================================" -ForegroundColor Green
             Write-Host "✅ SERVEO DOMAIN: $domain" -ForegroundColor Green
+            Write-Host "====================================" -ForegroundColor Green
             echo "SERVEO_DOMAIN=$domain" >> $env:GITHUB_ENV
           } else {
-            Write-Host "⚠️ Khong bat duoc domain! Xem toan bo SSH output phia tren." -ForegroundColor Red
+            Write-Host ""
+            Write-Host "❌ Tat ca cac port deu that bai!" -ForegroundColor Red
+            Write-Host "ℹ️  Serveo co the yeu cau SSH key de dung TCP tunnel." -ForegroundColor Yellow
+            Write-Host "ℹ️  Xem them: https://serveo.net/#tips" -ForegroundColor Yellow
             echo "SERVEO_DOMAIN=UNKNOWN" >> $env:GITHUB_ENV
           }
 
@@ -132,18 +162,15 @@ jobs:
 
           Write-Host ""
           Write-Host "╔══════════════════════════════════════════════╗" -ForegroundColor Cyan
-          Write-Host "║   RDP FREE - SERVEO TUNNEL                   ║" -ForegroundColor Cyan
+          Write-Host "║  RDP FREE - SERVEO TUNNEL                    ║" -ForegroundColor Cyan
           Write-Host "╠══════════════════════════════════════════════╣" -ForegroundColor Cyan
-          Write-Host "║  🌐 HOST: $domain" -ForegroundColor Yellow
-          Write-Host "║  👤 User: Administrator" -ForegroundColor White
-          Write-Host "║  ⏱️  Thoi gian: $displayTime" -ForegroundColor White
-          Write-Host "║  🕐  Ket thuc: $($endTime.ToString('HH:mm:ss')) (VN)" -ForegroundColor White
+          Write-Host "║  🌐 HOST : $domain" -ForegroundColor Yellow
+          Write-Host "║  👤 User : Administrator" -ForegroundColor White
+          Write-Host "║  ⏱️  Time : $displayTime" -ForegroundColor White
+          Write-Host "║  🕐  End  : $($endTime.ToString('HH:mm:ss')) (VN)" -ForegroundColor White
           Write-Host "╚══════════════════════════════════════════════╝" -ForegroundColor Cyan
           Write-Host ""
-          Write-Host "📌 Cach ket noi RDP:" -ForegroundColor Green
-          Write-Host "   1. Mo Remote Desktop Connection (mstsc)" -ForegroundColor White
-          Write-Host "   2. Nhap: $domain" -ForegroundColor Yellow
-          Write-Host "   3. Username: Administrator" -ForegroundColor White
+          Write-Host "📌 Ket noi RDP: Mo mstsc -> Nhap '$domain'" -ForegroundColor Green
 
           echo "TOTAL_MINUTES=$totalMinutes" >> $env:GITHUB_ENV
 
@@ -154,7 +181,6 @@ jobs:
           $endTime = [System.TimeZoneInfo]::ConvertTimeFromUtc((Get-Date).ToUniversalTime(), $tz).AddMinutes($totalMinutes)
           $frames = @('⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏')
           $startTime = Get-Date
-
           do {
             $now = [System.TimeZoneInfo]::ConvertTimeFromUtc((Get-Date).ToUniversalTime(), $tz)
             $remaining = $endTime - $now
@@ -163,10 +189,9 @@ jobs:
             $m = [int][math]::Floor($remaining.TotalMinutes % 60)
             $s = [int][math]::Floor($remaining.TotalSeconds % 60)
             $f = $frames[([int]((Get-Date)-$startTime).TotalSeconds) % $frames.Length]
-            Write-Host "`r$f Con lai: ${h}:$('{0:d2}' -f $m):$('{0:d2}' -f $s) - HOAT DONG" -NoNewline -ForegroundColor Cyan
+            Write-Host "`r$f Con lai: ${h}:$('{0:d2}' -f $m):$('{0:d2}' -f $s)" -NoNewline -ForegroundColor Cyan
             Start-Sleep -Seconds 5
           } while ($true)
-
           Write-Host ""
           Write-Host "Het thoi gian" -ForegroundColor Red
 
@@ -174,4 +199,4 @@ jobs:
         if: always()
         run: |
           Stop-Process -Name "ssh" -Force -ErrorAction SilentlyContinue
-          Write-Host "✅ Done" -ForegroundColor Green
+          Write-Host "✅ Done"
